@@ -144,7 +144,7 @@
     if (station.lat && station.lon) {
       var mapLink = el('a', {
         className: 'map-link',
-        href: 'https://www.openstreetmap.org/?mlat=' + station.lat + '&mlon=' + station.lon + '#map=17/' + station.lat + '/' + station.lon,
+        href: 'geo:' + station.lat + ',' + station.lon + '?q=' + station.lat + ',' + station.lon + '(' + encodeURIComponent(station.name) + ')',
         textContent: '📍',
         title: 'Open in map'
       });
@@ -265,7 +265,7 @@
               el('span', { className: 'station-dist', textContent: distMin + ' min walk' }),
               el('a', {
                 className: 'map-link',
-                href: 'https://www.openstreetmap.org/?mlat=' + s.lat + '&mlon=' + s.lon + '#map=17/' + s.lat + '/' + s.lon,
+                href: 'geo:' + s.lat + ',' + s.lon + '?q=' + s.lat + ',' + s.lon + '(' + encodeURIComponent(s.name) + ')',
                 textContent: '📍',
                 title: 'Open in map'
               })
