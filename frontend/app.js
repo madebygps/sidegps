@@ -28,6 +28,7 @@
   var currentLon = null;
   var cachedNearby = null;
   var cachedAlerts = null;
+  var dirMode = 'transit';
 
   // --- DOM helpers ---
   function $(sel) { return document.querySelector(sel); }
@@ -222,6 +223,44 @@
     stations.forEach(function (s) {
       container.appendChild(stationCard(s));
     });
+    // Also load Citi Bike
+    loadCitiBike();
+  }
+
+  // --- Citi Bike ---
+  function loadCitiBike() {
+    if (currentLat === null) return;
+    var section = $('#citibike-section');
+    var container = $('#citibike-stations');
+
+    apiFetch('/api/citibike?lat=' + currentLat + '&lon=' + currentLon + '&limit=3')
+      .then(function (data) {
+        var stations = data.stations || [];
+        if (stations.length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+        container.innerHTML = '';
+        stations.forEach(function (s) {
+          var distMin = Math.max(1, Math.round((s.distance_m || 0) / 80));
+          var bikesText = s.bikes + ' 🚲';
+          if (s.ebikes > 0) bikesText += '  ' + s.ebikes + ' ⚡';
+          bikesText += '  ' + s.docks + ' docks';
+
+          var card = el('div', { className: 'citibike-card' }, [
+            el('div', { className: 'citibike-header' }, [
+              el('span', { className: 'citibike-name', textContent: s.name }),
+              el('span', { className: 'station-dist', textContent: distMin + ' min walk' })
+            ]),
+            el('div', { className: 'citibike-avail' + (s.bikes === 0 ? ' empty' : ''), textContent: bikesText })
+          ]);
+          container.appendChild(card);
+        });
+        section.classList.remove('hidden');
+      })
+      .catch(function () {
+        section.classList.add('hidden');
+      });
   }
 
   function showError(statusEl, msg) {
@@ -475,6 +514,15 @@
       e.preventDefault();
       searchDirections();
     });
+
+    // Mode picker
+    $$('.mode-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $$('.mode-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        dirMode = btn.getAttribute('data-mode');
+      });
+    });
   }
 
   function setupAutocomplete(inputId, suggestionsId, onSelect) {
@@ -535,6 +583,28 @@
       return;
     }
 
+    // Walk/bike mode: compute locally (no API needed)
+    if (dirMode === 'walk' || dirMode === 'bike') {
+      var dist = haversineJS(fromCoords.lat, fromCoords.lon, toCoords.lat, toCoords.lon);
+      var speed = dirMode === 'walk' ? 80 : 250; // meters per minute
+      var mins = Math.max(1, Math.round(dist / speed));
+      var icon = dirMode === 'walk' ? '🚶' : '🚲';
+      var distText = dist > 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m';
+
+      result.innerHTML = '';
+      var card = el('div', { className: 'itinerary-card' });
+      card.appendChild(el('div', { className: 'itin-header' }, [
+        el('span', { className: 'itin-duration', textContent: mins + ' min' }),
+        el('span', { className: 'itin-transfers', textContent: icon + ' ' + distText })
+      ]));
+      if (dirMode === 'bike') {
+        // Show nearest Citi Bike stations to origin
+        card.appendChild(el('div', { className: 'leg-walk', textContent: '💡 Check Nearby tab for Citi Bike availability' }));
+      }
+      result.appendChild(card);
+      return;
+    }
+
     result.innerHTML = '';
     result.appendChild(el('div', { className: 'status-msg', textContent: 'Finding routes…' }));
 
@@ -555,6 +625,15 @@
         result.appendChild(el('div', { className: 'error-msg', textContent: 'Could not reach routing server.' }));
         result.appendChild(retryButton(searchDirections));
       });
+  }
+
+  function haversineJS(lat1, lon1, lat2, lon2) {
+    var R = 6371000;
+    var p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+    var dp = (lat2 - lat1) * Math.PI / 180;
+    var dl = (lon2 - lon1) * Math.PI / 180;
+    var a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
   function renderItineraries(itineraries) {

@@ -23,6 +23,10 @@
     <section id="tab-nearby" class="tab-content active">
       <div id="nearby-status" class="status-msg">Getting your location…</div>
       <div id="nearby-stations"></div>
+      <div id="citibike-section" class="hidden">
+        <div class="section-header">🚲 Citi Bike Nearby</div>
+        <div id="citibike-stations"></div>
+      </div>
     </section>
 
     <!-- Directions Tab -->
@@ -37,6 +41,11 @@
           <input type="text" id="dir-to" placeholder="Station, address, or landmark" aria-label="To">
         </div>
         <div id="dir-to-suggestions" class="suggestions hidden"></div>
+        <div class="mode-picker">
+          <button type="button" class="mode-btn active" data-mode="transit">🚇 Transit</button>
+          <button type="button" class="mode-btn" data-mode="walk">🚶 Walk</button>
+          <button type="button" class="mode-btn" data-mode="bike">🚲 Bike</button>
+        </div>
         <button type="submit" class="btn-primary">Get Directions</button>
       </form>
       <div id="directions-result"></div>

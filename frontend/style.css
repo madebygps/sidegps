@@ -547,3 +547,70 @@ html, body {
   color: #5dade2;
   margin-top: 2px;
 }
+
+/* === Citi Bike === */
+.section-header {
+  font-size: 16px;
+  font-weight: 700;
+  padding: 12px 0 6px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.citibike-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  margin-bottom: 8px;
+}
+
+.citibike-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.citibike-name {
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+  margin-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.citibike-avail {
+  font-size: 15px;
+  color: #2ecc71;
+}
+
+.citibike-avail.empty {
+  color: #e74c3c;
+}
+
+/* === Mode Picker === */
+.mode-picker {
+  display: flex;
+  gap: 6px;
+}
+
+.mode-btn {
+  flex: 1;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}

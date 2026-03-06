@@ -42,8 +42,13 @@ for route, feed_key in _ROUTE_FEED_MAP.items():
 
 ALERTS_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts"
 
+# Citi Bike GBFS feeds (free, no key)
+CITIBIKE_INFO_URL = "https://gbfs.citibikenyc.com/gbfs/en/station_information.json"
+CITIBIKE_STATUS_URL = "https://gbfs.citibikenyc.com/gbfs/en/station_status.json"
+
 # Simple in-memory cache: url -> (timestamp, data)
 _cache: dict[str, tuple[float, bytes]] = {}
+_json_cache: dict[str, tuple[float, dict]] = {}
 CACHE_TTL = 30  # seconds
 
 db: aiosqlite.Connection | None = None
@@ -336,6 +341,69 @@ async def get_alerts(response: Response):
         )
 
     return {"alerts": alerts}
+
+
+# ---------------------------------------------------------------------------
+# Citi Bike (GBFS — free, real-time bike/dock availability)
+# ---------------------------------------------------------------------------
+
+async def _fetch_json_cached(url: str, ttl: int = 60) -> dict:
+    """Fetch JSON with in-memory caching."""
+    now = time.time()
+    cached = _json_cache.get(url)
+    if cached and now - cached[0] < ttl:
+        return cached[1]
+    resp = await http_client.get(url, timeout=10.0)
+    resp.raise_for_status()
+    data = resp.json()
+    _json_cache[url] = (now, data)
+    return data
+
+
+@app.get("/api/citibike")
+async def nearby_citibike(
+    response: Response,
+    lat: float = Query(...),
+    lon: float = Query(...),
+    limit: int = Query(5, ge=1, le=20),
+):
+    """Return nearest Citi Bike stations with real-time availability."""
+    response.headers["Cache-Control"] = "public, max-age=30"
+
+    try:
+        info_data = await _fetch_json_cached(CITIBIKE_INFO_URL, ttl=300)
+        status_data = await _fetch_json_cached(CITIBIKE_STATUS_URL, ttl=30)
+    except Exception as e:
+        return {"error": str(e), "stations": []}
+
+    # Build status lookup
+    status_map = {}
+    for s in status_data.get("data", {}).get("stations", []):
+        status_map[s["station_id"]] = s
+
+    # Find nearest stations
+    scored = []
+    for station in info_data.get("data", {}).get("stations", []):
+        dist = haversine(lat, lon, station["lat"], station["lon"])
+        scored.append((dist, station))
+    scored.sort(key=lambda x: x[0])
+
+    results = []
+    for dist, station in scored[:limit]:
+        sid = station["station_id"]
+        status = status_map.get(sid, {})
+        results.append({
+            "name": station.get("name", ""),
+            "lat": station["lat"],
+            "lon": station["lon"],
+            "distance_m": round(dist, 1),
+            "bikes": status.get("num_bikes_available", 0),
+            "ebikes": status.get("num_ebikes_available", 0),
+            "docks": status.get("num_docks_available", 0),
+            "active": status.get("is_renting", 0) == 1,
+        })
+
+    return {"stations": results}
 
 
 # ---------------------------------------------------------------------------
