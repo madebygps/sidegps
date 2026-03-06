@@ -241,11 +241,14 @@
     var status = $('#nearby-status');
     if (!navigator.geolocation) {
       showError(status, 'Geolocation not supported by this browser.');
+      showManualFallback();
       return;
     }
-    status.textContent = 'Getting your location…';
+    status.textContent = 'Getting GPS fix… (can take up to 60s on degoogled devices)';
     status.className = 'status-msg';
 
+    // On degoogled Android, there's no Google Location Services.
+    // Raw GPS needs: enableHighAccuracy=true and longer timeout.
     navigator.geolocation.getCurrentPosition(
       function (pos) {
         currentLat = pos.coords.latitude;
@@ -257,13 +260,48 @@
         if (err.code === 1) {
           showError(status, 'Location access denied. Enable location in settings.');
         } else {
-          showError(status, 'Could not get location. Please try again.');
+          showError(status, 'GPS timed out. Try again outdoors, or pick a station below.');
         }
-        $('#nearby-stations').innerHTML = '';
-        $('#nearby-stations').appendChild(retryButton(requestLocation));
+        showManualFallback();
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 60000, maximumAge: 120000 }
     );
+  }
+
+  function showManualFallback() {
+    var container = $('#nearby-stations');
+    container.innerHTML = '';
+
+    // Quick-pick popular stations
+    var hubs = [
+      { name: 'Times Sq-42 St', lat: 40.7559, lon: -73.9870 },
+      { name: '14 St-Union Sq', lat: 40.7359, lon: -73.9906 },
+      { name: 'Grand Central-42 St', lat: 40.7527, lon: -73.9772 },
+      { name: 'Penn Station', lat: 40.7506, lon: -73.9935 },
+      { name: 'Atlantic Av-Barclays', lat: 40.6862, lon: -73.9787 },
+      { name: 'Jay St-MetroTech', lat: 40.6923, lon: -73.9872 },
+      { name: 'Fulton St', lat: 40.7092, lon: -74.0065 },
+      { name: 'Jackson Hts-Roosevelt', lat: 40.7466, lon: -73.8913 },
+    ];
+
+    var label = el('div', { className: 'status-msg', textContent: 'Or pick a station:' });
+    container.appendChild(label);
+
+    hubs.forEach(function (hub) {
+      var btn = el('button', {
+        className: 'station-pick-btn',
+        textContent: hub.name,
+        onClick: function () {
+          currentLat = hub.lat;
+          currentLon = hub.lon;
+          loadNearby();
+          startAutoRefresh();
+        }
+      });
+      container.appendChild(btn);
+    });
+
+    container.appendChild(retryButton(requestLocation));
   }
 
   function startAutoRefresh() {

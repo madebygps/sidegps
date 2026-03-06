@@ -412,6 +412,26 @@ html, body {
   background: var(--accent);
 }
 
+/* === Station Quick-Pick === */
+.station-pick-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.station-pick-btn:active {
+  background: var(--accent);
+}
+
 /* === Utilities === */
 .hidden {
   display: none !important;
