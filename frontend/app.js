@@ -137,10 +137,22 @@
     var distText = walkMin + ' min walk';
 
     var card = el('div', { className: 'station-card' });
-    card.appendChild(el('div', { className: 'station-header' }, [
+    var header = el('div', { className: 'station-header' }, [
       el('span', { className: 'station-name', textContent: station.name }),
       el('span', { className: 'station-dist', textContent: distText })
-    ]));
+    ]);
+    if (station.lat && station.lon) {
+      var mapLink = el('a', {
+        className: 'map-link',
+        href: 'https://www.openstreetmap.org/?mlat=' + station.lat + '&mlon=' + station.lon + '#map=17/' + station.lat + '/' + station.lon,
+        textContent: '📍',
+        title: 'Open in map'
+      });
+      mapLink.setAttribute('target', '_blank');
+      mapLink.addEventListener('click', function (e) { e.stopPropagation(); });
+      header.appendChild(mapLink);
+    }
+    card.appendChild(header);
 
     var arrivals = station.arrivals || [];
     if (arrivals.length === 0) {
@@ -250,10 +262,18 @@
           var card = el('div', { className: 'citibike-card' }, [
             el('div', { className: 'citibike-header' }, [
               el('span', { className: 'citibike-name', textContent: s.name }),
-              el('span', { className: 'station-dist', textContent: distMin + ' min walk' })
+              el('span', { className: 'station-dist', textContent: distMin + ' min walk' }),
+              el('a', {
+                className: 'map-link',
+                href: 'https://www.openstreetmap.org/?mlat=' + s.lat + '&mlon=' + s.lon + '#map=17/' + s.lat + '/' + s.lon,
+                textContent: '📍',
+                title: 'Open in map'
+              })
             ]),
             el('div', { className: 'citibike-avail' + (s.bikes === 0 ? ' empty' : ''), textContent: bikesText })
           ]);
+          card.querySelector('.map-link').setAttribute('target', '_blank');
+          card.querySelector('.map-link').addEventListener('click', function (e) { e.stopPropagation(); });
           container.appendChild(card);
         });
         section.classList.remove('hidden');
