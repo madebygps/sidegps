@@ -44,10 +44,15 @@ jobs:
           git commit -m "chore: update GTFS lite database $(date +%Y-%m-%d)"
           git push
 
+      - name: Login to Azure
+        if: steps.diff.outputs.changed == 'true'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Deploy to Azure
         if: steps.diff.outputs.changed == 'true'
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: sidegps
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: backend
+        working-directory: backend
+        run: |
+          cp ../frontend/*.html ../frontend/*.css ../frontend/*.js ../frontend/*.json static/
+          az webapp up --name sidegps --runtime "PYTHON:3.12" --sku F1

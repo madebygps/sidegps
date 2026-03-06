@@ -8,30 +8,18 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: "latest"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: uv sync --no-dev --frozen
-
       - name: Sync frontend to static
-        run: cp ../frontend/*.html ../frontend/*.css ../frontend/*.js ../frontend/*.json static/
+        run: cp frontend/*.html frontend/*.css frontend/*.js frontend/*.json backend/static/
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: sidegps
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: backend
+        working-directory: backend
+        run: az webapp up --name sidegps --runtime "PYTHON:3.12" --sku F1
