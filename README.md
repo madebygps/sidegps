@@ -58,6 +58,22 @@ All APIs are free and require no authentication.
 | Transitous (MOTIS) | Transit routing | `api.transitous.org/api/v1/plan` |
 | Nominatim (OSM) | Address search | `nominatim.openstreetmap.org/search` |
 
+## GTFS Database
+
+The app uses a lightweight SQLite database (~256 KB) precomputed from MTA's GTFS static feed. This avoids parsing large schedule files at runtime.
+
+`gtfs_loader.py --lite` downloads the GTFS zip, parses CSV files (`stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`), and builds a denormalized `route_stops` table that maps each parent station to its routes in a single join — so the API can look up routes for any station without touching the full trip/schedule data.
+
+**Tables in `gtfs_lite.db`:**
+
+| Table | Purpose |
+|-------|---------|
+| `stops` | All stations and child stops (lat/lon, parent relationships) |
+| `routes` | Subway lines (short name, color) |
+| `route_stops` | Precomputed station → route mapping (eliminates expensive joins at query time) |
+
+The database is rebuilt monthly by a GitHub Actions workflow and committed to the repo, so deployments always include fresh station data.
+
 ## Deployment
 
 Deployed to **Azure App Service** (F1 free tier) via GitHub Actions.
