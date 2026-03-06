@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  AZURE_WEBAPP_NAME: sidegps
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,6 +23,8 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure App Service
-        working-directory: backend
-        run: az webapp up --name sidegps --runtime "PYTHON:3.12" --sku F1
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: backend/
