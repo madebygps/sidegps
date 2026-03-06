@@ -1,0 +1,13 @@
+{
+  "name": "SideGPS - NYC Transit",
+  "short_name": "SideGPS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#0039A6",
+  "description": "Degoogled NYC subway & bus tracker",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
