@@ -19,8 +19,7 @@ def download_gtfs() -> bytes:
         import certifi
         ctx.load_verify_locations(certifi.where())
     except ImportError:
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        pass  # Fall back to system CA certificates
     with urllib.request.urlopen(GTFS_URL, timeout=60, context=ctx) as resp:
         data = resp.read()
     print(f"Downloaded {len(data)} bytes")
@@ -181,6 +180,9 @@ def create_lite_db(zip_bytes: bytes) -> None:
         ("stop_times", "stop_times.txt", lambda r: (r["trip_id"], r["stop_id"])),
     ]:
         rows = parse_csv(zip_bytes, filename)
+        if not rows:
+            print(f"Skipping empty {table}")
+            continue
         mc.executemany(f"INSERT OR IGNORE INTO {table} VALUES ({','.join('?' for _ in range(len(cols(rows[0]))))})", [cols(r) for r in rows])
         print(f"Parsed {len(rows)} {table}")
 

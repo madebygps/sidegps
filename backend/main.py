@@ -2,6 +2,7 @@
 
 import math
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 
@@ -62,7 +63,7 @@ async def lifespan(app: FastAPI):
     if not os.path.exists(DB_PATH):
         import subprocess
         loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gtfs_loader.py")
-        subprocess.run(["python", loader, "--lite"], check=True)
+        subprocess.run([sys.executable, loader, "--lite"], check=True)
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     http_client = httpx.AsyncClient(timeout=10.0)
@@ -75,7 +76,6 @@ app = FastAPI(title="NYC MTA Transit", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -113,22 +113,33 @@ async def fetch_feed(url: str) -> bytes:
 
 async def get_routes_for_station(stop_id: str) -> list[dict]:
     """Return list of routes serving a parent station (precomputed)."""
+    result = await _get_routes_for_stations([stop_id])
+    return result.get(stop_id, [])
+
+
+async def _get_routes_for_stations(stop_ids: list[str]) -> dict[str, list[dict]]:
+    """Return routes for multiple stations in a single query."""
+    if not stop_ids:
+        return {}
+    placeholders = ",".join("?" for _ in stop_ids)
     async with db.execute(
-        "SELECT route_id, route_short_name, route_long_name, route_color "
-        "FROM route_stops WHERE station_id = ?",
-        (stop_id,),
+        "SELECT station_id, route_id, route_short_name, route_long_name, route_color "
+        f"FROM route_stops WHERE station_id IN ({placeholders})",
+        stop_ids,
     ) as cursor:
         rows = await cursor.fetchall()
 
-    return [
-        {
-            "route_id": row[0],
-            "short_name": row[1],
-            "long_name": row[2],
-            "color": row[3],
-        }
-        for row in rows
-    ]
+    route_map: dict[str, list[dict]] = {}
+    for row in rows:
+        route_map.setdefault(row[0], []).append(
+            {
+                "route_id": row[1],
+                "short_name": row[2],
+                "long_name": row[3],
+                "color": row[4],
+            }
+        )
+    return route_map
 
 
 async def _get_arrivals_for_station(
@@ -222,16 +233,18 @@ async def list_stations():
     ) as cursor:
         rows = await cursor.fetchall()
 
+    station_ids = [row[0] for row in rows]
+    route_map = await _get_routes_for_stations(station_ids)
+
     stations = []
     for row in rows:
-        routes = await get_routes_for_station(row[0])
         stations.append(
             {
                 "id": row[0],
                 "name": row[1],
                 "lat": row[2],
                 "lon": row[3],
-                "routes": routes,
+                "routes": route_map.get(row[0], []),
             }
         )
     return stations
@@ -261,9 +274,12 @@ async def nearby_stations(
     scored.sort(key=lambda x: x[0])
 
     results = []
+    top_ids = [row[0] for _, row in scored[:limit]]
+    route_map = await _get_routes_for_stations(top_ids)
+
     for dist, row in scored[:limit]:
         stop_id = row[0]
-        routes = await get_routes_for_station(stop_id)
+        routes = route_map.get(stop_id, [])
         arrivals = await _get_arrivals_for_station(stop_id, routes)
         results.append(
             {
