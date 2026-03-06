@@ -114,14 +114,15 @@
 
   // --- Arrival row ---
   function arrivalRow(arr) {
-    var mins = arr.minutes;
-    var isLive = arr.is_live !== false;
+    var route = arr.route_id || arr.route || '';
+    var mins = arr.minutes_away != null ? Math.round(arr.minutes_away) : (arr.minutes != null ? arr.minutes : '?');
+    var isLive = true;
     var timeText = isLive ? mins + ' min' : '~' + mins + ' min';
     var timeClass = 'arrival-time ' + (isLive ? 'live' : 'scheduled');
-    var dir = dirLabel(arr.direction_id, arr.route);
+    var dir = dirLabel(arr.direction != null ? arr.direction : arr.direction_id, route);
 
     var row = el('div', { className: 'arrival-row' }, [
-      routeBadge(arr.route),
+      routeBadge(route),
       el('span', { className: 'arrival-dir', textContent: dir }),
       el('span', { className: timeClass, textContent: timeText })
     ]);
@@ -150,7 +151,7 @@
     }
 
     card.addEventListener('click', function () {
-      openArrivalBoard(station.stop_id, station.name);
+      openArrivalBoard(station.id || station.stop_id, station.name);
     });
 
     return card;
@@ -388,9 +389,10 @@
         card.appendChild(badgeRow);
       }
 
-      card.appendChild(el('div', { className: 'alert-header', textContent: alert.header || alert.title || 'Service Alert' }));
-      if (alert.description) {
-        card.appendChild(el('div', { className: 'alert-desc', textContent: alert.description }));
+      card.appendChild(el('div', { className: 'alert-header', textContent: alert.header_text || alert.header || alert.title || 'Service Alert' }));
+      if (alert.description_text || alert.description) {
+        var desc = alert.description_text || alert.description;
+        card.appendChild(el('div', { className: 'alert-desc', textContent: desc.substring(0, 300) }));
       }
       list.appendChild(card);
     });
