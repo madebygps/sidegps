@@ -1,25 +1,30 @@
 # SideGPS — Degoogled NYC Transit
 
-A privacy-respecting NYC subway & bus tracker designed for the [Sidephone SP-01](https://docs.sidephone.com) (480×640, degoogled Android). Zero Google dependencies.
+A privacy-respecting NYC subway, Citi Bike, and transit directions app designed for the [Sidephone SP-01](https://docs.sidephone.com) (480×640, degoogled Android). Zero Google dependencies, zero API keys, zero tracking.
 
 ## Features
 
-- **Real-time subway arrivals** — live data from MTA GTFS-RT feeds
+- **Real-time subway arrivals** — live data from MTA GTFS-RT feeds (8 route groups)
 - **Nearby stations** — GPS-based, shows walking distance + next trains
+- **Citi Bike** — real-time bike, eBike, and dock availability at nearby stations
+- **Directions** — multi-modal transit routing (🚇 transit, 🚶 walk, 🚲 bike) via Transitous
 - **Service alerts** — current MTA disruptions and delays
-- **Offline-capable** — PWA with service worker caching
+- **Map links** — tap 📍 to open any station or bike dock in Organic Maps / HERE Maps via `geo:` URI
+- **Offline-capable** — PWA with service worker caching; works in subway tunnels
 - **Tiny screen optimized** — designed for 480×640 displays
 - **No tracking** — no cookies, analytics, or third-party scripts
 
 ## Architecture
 
 ```
-Frontend (PWA)          Backend (FastAPI)         MTA
-index.html  ──────►  /api/nearby      ──────►  GTFS-RT feeds
-style.css             /api/arrivals             (real-time)
+Frontend (PWA)          Backend (FastAPI)              External APIs
+index.html  ──────►  /api/nearby        ──────►  MTA GTFS-RT feeds
+style.css             /api/arrivals               MTA Service Alerts
 app.js                /api/alerts
-sw.js                 /api/stations            GTFS static
-                                               (SQLite DB)
+sw.js                 /api/citibike      ──────►  Citi Bike GBFS
+manifest.json         /api/directions    ──────►  Transitous (MOTIS)
+                      /api/search-places ──────►  Nominatim (OSM)
+                      /api/stations               GTFS static (SQLite)
 ```
 
 ## Quick Start
@@ -27,27 +32,37 @@ sw.js                 /api/stations            GTFS static
 ```bash
 # 1. Set up backend
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 
 # 2. Download MTA GTFS data
-python gtfs_loader.py
+uv run python gtfs_loader.py
 
 # 3. Run server (serves both API + frontend)
-uvicorn main:app --host 127.0.0.1 --port 8000
+uv run uvicorn main:app --host 127.0.0.1 --port 8000
 
 # 4. Open in browser
 open http://127.0.0.1:8000
 ```
 
-## MTA Data Sources
+## Data Sources
 
-| Feed | URL | Auth |
-|------|-----|------|
-| Subway GTFS (static) | `rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip` | None |
-| Subway GTFS-RT | `api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-*` | None |
-| Service Alerts | `api-endpoint.mta.info/.../camsys%2Fsubway-alerts` | None |
+All APIs are free and require no authentication.
+
+| Service | Purpose | URL |
+|---------|---------|-----|
+| MTA GTFS (static) | Station/route data | `rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip` |
+| MTA GTFS-RT | Real-time arrivals | `api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-*` |
+| MTA Alerts | Service disruptions | `api-endpoint.mta.info/.../camsys%2Fsubway-alerts` |
+| Citi Bike GBFS | Bike/dock availability | `gbfs.citibikenyc.com/gbfs/en/station_*.json` |
+| Transitous (MOTIS) | Transit routing | `api.transitous.org/api/v1/plan` |
+| Nominatim (OSM) | Address search | `nominatim.openstreetmap.org/search` |
+
+## Deployment
+
+Deployed to **Azure App Service** (F1 free tier) via GitHub Actions.
+
+- **CI/CD** — `.github/workflows/deploy.yml` deploys on every push to `main`
+- **GTFS updates** — `.github/workflows/update-gtfs.yml` rebuilds the station database monthly and auto-deploys if changed
 
 ## License
 
