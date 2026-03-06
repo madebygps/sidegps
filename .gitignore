@@ -20,3 +20,5 @@ Thumbs.db
 
 # Env
 .env
+*.db
+backend/static/data/

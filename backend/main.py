@@ -53,6 +53,11 @@ http_client: httpx.AsyncClient | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db, http_client
+    # Auto-download GTFS if database doesn't exist
+    if not os.path.exists(DB_PATH):
+        import subprocess
+        loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gtfs_loader.py")
+        subprocess.run(["python", loader], check=True)
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     http_client = httpx.AsyncClient(timeout=10.0)
@@ -350,6 +355,9 @@ async def get_alerts(response: Response):
 # Serve frontend static files (mount AFTER API routes)
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-_frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+_base = os.path.dirname(os.path.abspath(__file__))
+_frontend_dir = os.path.join(_base, "static")
+if not os.path.isdir(_frontend_dir):
+    _frontend_dir = os.path.join(_base, "..", "frontend")
 if os.path.isdir(_frontend_dir):
     app.mount("/", StaticFiles(directory=_frontend_dir, html=True), name="frontend")

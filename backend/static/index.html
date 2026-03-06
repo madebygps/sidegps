@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0039A6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>SideGPS</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+</head>
+<body>
+  <header id="app-header">
+    <h1>SideGPS</h1>
+    <span class="subtitle">NYC Transit</span>
+  </header>
+
+  <main id="content">
+    <!-- Nearby Tab -->
+    <section id="tab-nearby" class="tab-content active">
+      <div id="nearby-status" class="status-msg">Getting your location…</div>
+      <div id="nearby-stations"></div>
+    </section>
+
+    <!-- Directions Tab -->
+    <section id="tab-directions" class="tab-content">
+      <form id="directions-form" autocomplete="off">
+        <div class="input-row">
+          <input type="text" id="dir-from" placeholder="From" aria-label="From">
+          <button type="button" id="btn-locate" class="icon-btn" aria-label="Use current location">📍</button>
+        </div>
+        <div class="input-row">
+          <input type="text" id="dir-to" placeholder="To" aria-label="To">
+        </div>
+        <button type="submit" class="btn-primary">Get Directions</button>
+      </form>
+      <div id="directions-result">
+        <p class="status-msg">Coming soon — route planning will be available once the trip planner backend is configured.</p>
+      </div>
+    </section>
+
+    <!-- Alerts Tab -->
+    <section id="tab-alerts" class="tab-content">
+      <div id="alerts-status" class="status-msg">Loading alerts…</div>
+      <div id="alerts-list"></div>
+    </section>
+  </main>
+
+  <!-- Arrival detail overlay -->
+  <div id="arrival-overlay" class="overlay hidden">
+    <header class="overlay-header">
+      <button id="overlay-back" class="icon-btn" aria-label="Back">←</button>
+      <h2 id="overlay-title">Station</h2>
+    </header>
+    <div id="arrival-board"></div>
+  </div>
+
+  <!-- Bottom tab bar -->
+  <nav id="tab-bar">
+    <button class="tab active" data-tab="nearby">
+      <span class="tab-icon">🚇</span>
+      <span class="tab-label">Nearby</span>
+    </button>
+    <button class="tab" data-tab="directions">
+      <span class="tab-icon">🧭</span>
+      <span class="tab-label">Directions</span>
+    </button>
+    <button class="tab" data-tab="alerts">
+      <span class="tab-icon">⚠️</span>
+      <span class="tab-label">Alerts</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function(err) {
+        console.warn('SW registration failed:', err);
+      });
+    }
+  </script>
+</body>
+</html>
