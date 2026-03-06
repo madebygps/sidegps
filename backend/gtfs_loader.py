@@ -156,6 +156,75 @@ def create_db(zip_bytes: bytes) -> None:
     print(f"Database created at {DB_PATH}")
 
 
+LITE_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "gtfs_lite.db")
+
+
+def create_lite_db(zip_bytes: bytes) -> None:
+    """Build the lightweight DB (256KB) with precomputed route-station mappings."""
+    os.makedirs(os.path.dirname(LITE_DB_PATH), exist_ok=True)
+    if os.path.exists(LITE_DB_PATH):
+        os.remove(LITE_DB_PATH)
+
+    # First build full DB in memory to compute the join
+    mem = sqlite3.connect(":memory:")
+    mc = mem.cursor()
+
+    mc.execute("CREATE TABLE stops (stop_id TEXT PRIMARY KEY, stop_name TEXT, stop_lat REAL, stop_lon REAL, parent_station TEXT)")
+    mc.execute("CREATE TABLE routes (route_id TEXT PRIMARY KEY, route_short_name TEXT, route_long_name TEXT, route_color TEXT)")
+    mc.execute("CREATE TABLE trips (trip_id TEXT, route_id TEXT)")
+    mc.execute("CREATE TABLE stop_times (trip_id TEXT, stop_id TEXT)")
+
+    for table, filename, cols in [
+        ("stops", "stops.txt", lambda r: (r["stop_id"], r["stop_name"], float(r["stop_lat"]) if r["stop_lat"] else None, float(r["stop_lon"]) if r["stop_lon"] else None, r.get("parent_station", ""))),
+        ("routes", "routes.txt", lambda r: (r["route_id"], r.get("route_short_name", ""), r.get("route_long_name", ""), r.get("route_color", ""))),
+        ("trips", "trips.txt", lambda r: (r["trip_id"], r["route_id"])),
+        ("stop_times", "stop_times.txt", lambda r: (r["trip_id"], r["stop_id"])),
+    ]:
+        rows = parse_csv(zip_bytes, filename)
+        mc.executemany(f"INSERT OR IGNORE INTO {table} VALUES ({','.join('?' for _ in range(len(cols(rows[0]))))})", [cols(r) for r in rows])
+        print(f"Parsed {len(rows)} {table}")
+
+    # Precompute route_stops
+    route_stops = mc.execute("""
+        SELECT DISTINCT
+            CASE WHEN s.parent_station != '' THEN s.parent_station ELSE s.stop_id END,
+            r.route_id, r.route_short_name, r.route_long_name, r.route_color
+        FROM stop_times st
+        JOIN trips t ON st.trip_id = t.trip_id
+        JOIN routes r ON t.route_id = r.route_id
+        JOIN stops s ON st.stop_id = s.stop_id
+    """).fetchall()
+    print(f"Precomputed {len(route_stops)} route-station mappings")
+    mem.close()
+
+    # Write the lite DB
+    lite = sqlite3.connect(LITE_DB_PATH)
+    lc = lite.cursor()
+    lc.execute("CREATE TABLE stops (stop_id TEXT PRIMARY KEY, stop_name TEXT, stop_lat REAL, stop_lon REAL, parent_station TEXT)")
+    lc.execute("CREATE TABLE routes (route_id TEXT PRIMARY KEY, route_short_name TEXT, route_long_name TEXT, route_color TEXT)")
+    lc.execute("CREATE TABLE route_stops (station_id TEXT, route_id TEXT, route_short_name TEXT, route_long_name TEXT, route_color TEXT, PRIMARY KEY (station_id, route_id))")
+
+    stops = parse_csv(zip_bytes, "stops.txt")
+    lc.executemany("INSERT OR IGNORE INTO stops VALUES (?,?,?,?,?)",
+        [(r["stop_id"], r["stop_name"], float(r["stop_lat"]) if r["stop_lat"] else None, float(r["stop_lon"]) if r["stop_lon"] else None, r.get("parent_station", "")) for r in stops])
+    routes = parse_csv(zip_bytes, "routes.txt")
+    lc.executemany("INSERT OR IGNORE INTO routes VALUES (?,?,?,?)",
+        [(r["route_id"], r.get("route_short_name", ""), r.get("route_long_name", ""), r.get("route_color", "")) for r in routes])
+    lc.executemany("INSERT OR IGNORE INTO route_stops VALUES (?,?,?,?,?)", route_stops)
+
+    lc.execute("CREATE INDEX idx_stops_parent ON stops(parent_station)")
+    lc.execute("CREATE INDEX idx_stops_latlon ON stops(stop_lat, stop_lon)")
+    lc.execute("CREATE INDEX idx_route_stops_station ON route_stops(station_id)")
+    lite.commit()
+    lite.close()
+    print(f"Lite database created at {LITE_DB_PATH} ({os.path.getsize(LITE_DB_PATH) // 1024} KB)")
+
+
 if __name__ == "__main__":
+    import sys
     data = download_gtfs()
-    create_db(data)
+    if "--lite" in sys.argv:
+        create_lite_db(data)
+    else:
+        create_db(data)
+        create_lite_db(data)

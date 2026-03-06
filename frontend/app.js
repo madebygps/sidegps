@@ -237,40 +237,128 @@
   }
 
   // --- Geolocation ---
+  // On degoogled Android (like Sidephone), there's no Google Location Services.
+  // The browser Geolocation API depends on the OS location provider, which without
+  // GMS has NO network location — only raw GPS. Raw GPS needs clear sky view and
+  // can take 30-120s for a cold fix. We use a 3-tier fallback:
+  //   1. Try browser geolocation (GPS) with generous timeout
+  //   2. Fall back to IP-based geolocation (city-level, but instant)
+  //   3. Manual station picker as last resort
+
   function requestLocation() {
     var status = $('#nearby-status');
+    var container = $('#nearby-stations');
+    container.innerHTML = '';
+
     if (!navigator.geolocation) {
-      showError(status, 'Geolocation not supported by this browser.');
-      showManualFallback();
+      ipFallback();
       return;
     }
-    status.textContent = 'Getting GPS fix… (can take up to 60s on degoogled devices)';
+
+    status.textContent = 'Acquiring GPS… (may take a minute without Google services)';
     status.className = 'status-msg';
 
-    // On degoogled Android, there's no Google Location Services.
-    // Raw GPS needs: enableHighAccuracy=true and longer timeout.
-    navigator.geolocation.getCurrentPosition(
-      function (pos) {
-        currentLat = pos.coords.latitude;
-        currentLon = pos.coords.longitude;
+    // Also start IP fallback in parallel — whichever wins first
+    var resolved = false;
+
+    // IP geolocation runs immediately as backup
+    ipGeolocate(function (lat, lon) {
+      if (!resolved) {
+        resolved = true;
+        currentLat = lat;
+        currentLon = lon;
         loadNearby();
         startAutoRefresh();
-      },
-      function (err) {
-        if (err.code === 1) {
-          showError(status, 'Location access denied. Enable location in settings.');
-        } else {
-          showError(status, 'GPS timed out. Try again outdoors, or pick a station below.');
+        // Keep trying GPS in background for better accuracy
+        tryGpsUpgrade();
+      }
+    });
+
+    // GPS attempt — may succeed and override IP location
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        if (!resolved || pos.coords.accuracy < 500) {
+          resolved = true;
+          currentLat = pos.coords.latitude;
+          currentLon = pos.coords.longitude;
+          loadNearby();
+          startAutoRefresh();
         }
-        showManualFallback();
       },
-      { enableHighAccuracy: true, timeout: 60000, maximumAge: 120000 }
+      function () {
+        // GPS failed — if IP also hasn't resolved, show manual picker
+        if (!resolved) {
+          showManualFallback();
+        }
+      },
+      { enableHighAccuracy: true, timeout: 90000, maximumAge: 300000 }
     );
+
+    // If nothing resolves in 8 seconds, show manual fallback alongside loading
+    setTimeout(function () {
+      if (!resolved) {
+        status.textContent = 'Still waiting for location…';
+        showManualFallback();
+      }
+    }, 8000);
+  }
+
+  function tryGpsUpgrade() {
+    // Keep watching GPS in background — if we get a fix, silently upgrade
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        if (pos.coords.accuracy < 200) {
+          currentLat = pos.coords.latitude;
+          currentLon = pos.coords.longitude;
+          // Only reload if user is still on nearby tab
+          if ($('#tab-nearby').classList.contains('active')) {
+            loadNearby();
+          }
+        }
+      },
+      function () { /* ignore */ },
+      { enableHighAccuracy: true, timeout: 120000, maximumAge: 60000 }
+    );
+  }
+
+  function ipGeolocate(callback) {
+    // Free IP geolocation APIs — no key needed, city-level accuracy (~1-5km)
+    // Good enough to find the right neighborhood in NYC
+    var apis = [
+      {
+        url: 'https://ipapi.co/json/',
+        parse: function (d) { return { lat: d.latitude, lon: d.longitude }; }
+      },
+      {
+        url: 'https://ipwho.is/',
+        parse: function (d) { return { lat: d.latitude, lon: d.longitude }; }
+      }
+    ];
+
+    var tried = 0;
+    function tryNext() {
+      if (tried >= apis.length) return;
+      var api = apis[tried++];
+      fetch(api.url, { timeout: 5000 })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var loc = api.parse(data);
+          if (loc.lat && loc.lon && Math.abs(loc.lat) > 0.1) {
+            callback(loc.lat, loc.lon);
+          } else {
+            tryNext();
+          }
+        })
+        .catch(function () { tryNext(); });
+    }
+    tryNext();
   }
 
   function showManualFallback() {
     var container = $('#nearby-stations');
-    container.innerHTML = '';
+    // Don't clear if we already have station cards rendered
+    if (container.querySelector('.station-card')) return;
 
     // Quick-pick popular stations
     var hubs = [
@@ -282,9 +370,11 @@
       { name: 'Jay St-MetroTech', lat: 40.6923, lon: -73.9872 },
       { name: 'Fulton St', lat: 40.7092, lon: -74.0065 },
       { name: 'Jackson Hts-Roosevelt', lat: 40.7466, lon: -73.8913 },
+      { name: 'W 4 St-Washington Sq', lat: 40.7322, lon: -74.0009 },
+      { name: '59 St-Columbus Circle', lat: 40.7684, lon: -73.9816 },
     ];
 
-    var label = el('div', { className: 'status-msg', textContent: 'Or pick a station:' });
+    var label = el('div', { className: 'status-msg', textContent: 'Pick a station area:' });
     container.appendChild(label);
 
     hubs.forEach(function (hub) {
@@ -294,6 +384,7 @@
         onClick: function () {
           currentLat = hub.lat;
           currentLon = hub.lon;
+          container.innerHTML = '';
           loadNearby();
           startAutoRefresh();
         }
@@ -301,7 +392,13 @@
       container.appendChild(btn);
     });
 
-    container.appendChild(retryButton(requestLocation));
+    var retryRow = el('div', { style: 'text-align:center;margin-top:8px' }, [
+      el('button', { className: 'btn-retry', textContent: '🔄 Retry GPS', onClick: function () {
+        container.innerHTML = '';
+        requestLocation();
+      }})
+    ]);
+    container.appendChild(retryRow);
   }
 
   function startAutoRefresh() {
@@ -344,32 +441,219 @@
   }
 
   // --- Directions tab ---
+  var fromCoords = null; // {lat, lon}
+  var toCoords = null;
+  var searchTimer = null;
+
   function initDirections() {
     $('#btn-locate').addEventListener('click', function () {
       if (currentLat !== null) {
-        $('#dir-from').value = 'Current Location (' + currentLat.toFixed(4) + ', ' + currentLon.toFixed(4) + ')';
+        fromCoords = { lat: currentLat, lon: currentLon };
+        $('#dir-from').value = 'My Location';
+        $('#dir-from').classList.add('has-coords');
       } else {
         $('#dir-from').value = '📍 Getting location…';
-        navigator.geolocation.getCurrentPosition(
-          function (pos) {
-            currentLat = pos.coords.latitude;
-            currentLon = pos.coords.longitude;
-            $('#dir-from').value = 'Current Location (' + currentLat.toFixed(4) + ', ' + currentLon.toFixed(4) + ')';
-          },
-          function () {
-            $('#dir-from').value = '';
-            $('#dir-from').placeholder = 'Could not get location';
-          },
-          { timeout: 10000 }
-        );
+        ipGeolocate(function (lat, lon) {
+          currentLat = lat;
+          currentLon = lon;
+          fromCoords = { lat: lat, lon: lon };
+          $('#dir-from').value = 'My Location';
+          $('#dir-from').classList.add('has-coords');
+        });
       }
+    });
+
+    // Station autocomplete for both fields
+    setupAutocomplete('dir-from', 'dir-from-suggestions', function (station) {
+      fromCoords = { lat: station.lat, lon: station.lon };
+    });
+    setupAutocomplete('dir-to', 'dir-to-suggestions', function (station) {
+      toCoords = { lat: station.lat, lon: station.lon };
     });
 
     $('#directions-form').addEventListener('submit', function (e) {
       e.preventDefault();
-      var result = $('#directions-result');
-      result.innerHTML = '<p class="status-msg">Coming soon — route planning will be available once the trip planner backend is configured.</p>';
+      searchDirections();
     });
+  }
+
+  function setupAutocomplete(inputId, suggestionsId, onSelect) {
+    var input = $('#' + inputId);
+    var sugBox = $('#' + suggestionsId);
+
+    input.addEventListener('input', function () {
+      input.classList.remove('has-coords');
+      if (inputId === 'dir-from') fromCoords = null;
+      else toCoords = null;
+
+      clearTimeout(searchTimer);
+      var q = input.value.trim();
+      if (q.length < 2) {
+        sugBox.classList.add('hidden');
+        sugBox.innerHTML = '';
+        return;
+      }
+      searchTimer = setTimeout(function () {
+        apiFetch('/api/search-places?q=' + encodeURIComponent(q))
+          .then(function (results) {
+            sugBox.innerHTML = '';
+            if (!results || results.length === 0) {
+              sugBox.classList.add('hidden');
+              return;
+            }
+            results.forEach(function (s) {
+              var item = el('div', {
+                className: 'suggestion-item',
+                textContent: s.name,
+                onClick: function () {
+                  input.value = s.name;
+                  input.classList.add('has-coords');
+                  sugBox.classList.add('hidden');
+                  onSelect(s);
+                }
+              });
+              sugBox.appendChild(item);
+            });
+            sugBox.classList.remove('hidden');
+          })
+          .catch(function () { sugBox.classList.add('hidden'); });
+      }, 250);
+    });
+
+    // Hide suggestions on blur (with delay so clicks register)
+    input.addEventListener('blur', function () {
+      setTimeout(function () { sugBox.classList.add('hidden'); }, 200);
+    });
+  }
+
+  function searchDirections() {
+    var result = $('#directions-result');
+
+    if (!fromCoords || !toCoords) {
+      result.innerHTML = '';
+      result.appendChild(el('div', { className: 'error-msg', textContent: 'Select a station or use 📍 for both From and To.' }));
+      return;
+    }
+
+    result.innerHTML = '';
+    result.appendChild(el('div', { className: 'status-msg', textContent: 'Finding routes…' }));
+
+    var url = '/api/directions?from_lat=' + fromCoords.lat + '&from_lon=' + fromCoords.lon
+      + '&to_lat=' + toCoords.lat + '&to_lon=' + toCoords.lon;
+
+    apiFetch(url)
+      .then(function (data) {
+        if (data.error) {
+          result.innerHTML = '';
+          result.appendChild(el('div', { className: 'error-msg', textContent: 'Routing error: ' + data.error }));
+          return;
+        }
+        renderItineraries(data.itineraries || []);
+      })
+      .catch(function () {
+        result.innerHTML = '';
+        result.appendChild(el('div', { className: 'error-msg', textContent: 'Could not reach routing server.' }));
+        result.appendChild(retryButton(searchDirections));
+      });
+  }
+
+  function renderItineraries(itineraries) {
+    var result = $('#directions-result');
+    result.innerHTML = '';
+
+    if (itineraries.length === 0) {
+      result.appendChild(el('div', { className: 'status-msg', textContent: 'No routes found.' }));
+      return;
+    }
+
+    itineraries.forEach(function (itin, idx) {
+      var totalMin = Math.round(itin.duration / 60);
+      var transfers = itin.transfers;
+
+      // Build summary line with transit route badges
+      var transitRoutes = [];
+      itin.legs.forEach(function (leg) {
+        if (leg.mode !== 'WALK' && leg.route) {
+          transitRoutes.push(leg.route);
+        }
+      });
+
+      var card = el('div', { className: 'itinerary-card' });
+
+      // Header row: duration + transfers + route badges
+      var headerRow = el('div', { className: 'itin-header' });
+      headerRow.appendChild(el('span', { className: 'itin-duration', textContent: totalMin + ' min' }));
+      if (transfers > 0) {
+        headerRow.appendChild(el('span', { className: 'itin-transfers', textContent: transfers + ' transfer' + (transfers > 1 ? 's' : '') }));
+      }
+      transitRoutes.forEach(function (r) {
+        headerRow.appendChild(routeBadge(r));
+      });
+      card.appendChild(headerRow);
+
+      // Time range
+      var startT = formatTime(itin.start_time);
+      var endT = formatTime(itin.end_time);
+      if (startT && endT) {
+        card.appendChild(el('div', { className: 'itin-time-range', textContent: startT + ' → ' + endT }));
+      }
+
+      // Leg details
+      var legsContainer = el('div', { className: 'itin-legs' });
+      itin.legs.forEach(function (leg) {
+        var legMin = Math.round(leg.duration / 60);
+        var legEl;
+
+        if (leg.mode === 'WALK') {
+          var distM = Math.round(leg.distance || 0);
+          var walkText = '🚶 Walk ' + legMin + ' min';
+          if (distM > 0) walkText += ' (' + distM + 'm)';
+          if (leg.to_name && leg.to_name !== 'END') walkText += ' to ' + leg.to_name;
+          legEl = el('div', { className: 'leg-walk', textContent: walkText });
+        } else {
+          legEl = el('div', { className: 'leg-transit' });
+          var legHeader = el('div', { className: 'leg-transit-header' });
+          if (leg.route) legHeader.appendChild(routeBadge(leg.route));
+
+          var modeIcon = leg.mode === 'SUBWAY' ? '🚇' : leg.mode === 'BUS' ? '🚌' : '🚆';
+          var routeName = leg.route_long || leg.route || leg.mode;
+          legHeader.appendChild(el('span', { textContent: modeIcon + ' ' + routeName + ' · ' + legMin + ' min' }));
+          legEl.appendChild(legHeader);
+
+          if (leg.headsign) {
+            legEl.appendChild(el('div', { className: 'leg-headsign', textContent: '→ ' + leg.headsign }));
+          }
+
+          var stopLine = '';
+          if (leg.from_name && leg.from_name !== 'START') stopLine += leg.from_name;
+          if (leg.to_name && leg.to_name !== 'END') stopLine += ' → ' + leg.to_name;
+          if (leg.num_stops > 0) stopLine += ' (' + leg.num_stops + ' stops)';
+          if (stopLine) {
+            legEl.appendChild(el('div', { className: 'leg-stops', textContent: stopLine }));
+          }
+
+          var legTime = formatTime(leg.start_time);
+          if (legTime) {
+            legEl.appendChild(el('div', { className: 'leg-time', textContent: 'Departs ' + legTime }));
+          }
+        }
+        legsContainer.appendChild(legEl);
+      });
+      card.appendChild(legsContainer);
+      result.appendChild(card);
+    });
+  }
+
+  function formatTime(isoStr) {
+    if (!isoStr) return '';
+    try {
+      var d = new Date(isoStr);
+      var h = d.getHours();
+      var m = d.getMinutes();
+      var ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+    } catch (e) { return ''; }
   }
 
   // --- Alerts tab ---

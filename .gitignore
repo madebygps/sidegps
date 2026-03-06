@@ -6,7 +6,8 @@ __pycache__/
 venv/
 
 # Data
-backend/data/
+backend/data/gtfs.db
+backend/data/gtfs_subway.zip
 
 # IDE
 .idea/
@@ -20,5 +21,4 @@ Thumbs.db
 
 # Env
 .env
-*.db
 backend/static/data/

@@ -11,7 +11,7 @@ from fastapi import FastAPI, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from google.transit import gtfs_realtime_pb2
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "gtfs.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "gtfs_lite.db")
 
 # Map route_id -> GTFS-RT feed URL
 ROUTE_TO_FEED: dict[str, str] = {}
@@ -53,11 +53,11 @@ http_client: httpx.AsyncClient | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db, http_client
-    # Auto-download GTFS if database doesn't exist
+    # Auto-build lite DB if missing
     if not os.path.exists(DB_PATH):
         import subprocess
         loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gtfs_loader.py")
-        subprocess.run(["python", loader], check=True)
+        subprocess.run(["python", loader, "--lite"], check=True)
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     http_client = httpx.AsyncClient(timeout=10.0)
@@ -107,26 +107,12 @@ async def fetch_feed(url: str) -> bytes:
 
 
 async def get_routes_for_station(stop_id: str) -> list[dict]:
-    """Return list of routes serving a parent station."""
-    # Get child stop IDs (and the parent itself)
+    """Return list of routes serving a parent station (precomputed)."""
     async with db.execute(
-        "SELECT stop_id FROM stops WHERE stop_id = ? OR parent_station = ?",
-        (stop_id, stop_id),
+        "SELECT route_id, route_short_name, route_long_name, route_color "
+        "FROM route_stops WHERE station_id = ?",
+        (stop_id,),
     ) as cursor:
-        child_ids = [row[0] for row in await cursor.fetchall()]
-
-    if not child_ids:
-        return []
-
-    placeholders = ",".join("?" for _ in child_ids)
-    query = f"""
-        SELECT DISTINCT r.route_id, r.route_short_name, r.route_long_name, r.route_color
-        FROM stop_times st
-        JOIN trips t ON st.trip_id = t.trip_id
-        JOIN routes r ON t.route_id = r.route_id
-        WHERE st.stop_id IN ({placeholders})
-    """
-    async with db.execute(query, child_ids) as cursor:
         rows = await cursor.fetchall()
 
     return [
@@ -350,6 +336,126 @@ async def get_alerts(response: Response):
         )
 
     return {"alerts": alerts}
+
+
+# ---------------------------------------------------------------------------
+# Directions (via Transitous / MOTIS API — free, open-source transit routing)
+# ---------------------------------------------------------------------------
+
+TRANSITOUS_URL = "https://api.transitous.org/api/v1/plan"
+
+
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# Bounding box for NYC area
+NYC_VIEWBOX = "-74.3,40.4,-73.7,40.95"
+
+
+@app.get("/api/search-places")
+async def search_places(q: str = Query(..., min_length=2), limit: int = Query(8, ge=1, le=20)):
+    """Search stations + addresses/landmarks via Nominatim. Returns mixed results."""
+    results = []
+
+    # 1. Search local GTFS stations first
+    async with db.execute(
+        "SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops "
+        "WHERE (parent_station IS NULL OR parent_station = '') "
+        "AND stop_name LIKE ? COLLATE NOCASE "
+        "ORDER BY stop_name LIMIT ?",
+        (f"%{q}%", min(limit, 5)),
+    ) as cursor:
+        rows = await cursor.fetchall()
+    for r in rows:
+        results.append({"name": "🚇 " + r[1], "lat": r[2], "lon": r[3], "type": "station"})
+
+    # 2. Geocode via Nominatim for addresses/landmarks
+    try:
+        resp = await http_client.get(
+            NOMINATIM_URL,
+            params={
+                "q": q,
+                "format": "json",
+                "limit": min(limit, 4),
+                "viewbox": NYC_VIEWBOX,
+                "bounded": "1",
+            },
+            headers={"User-Agent": "SideGPS/1.0 (NYC transit PWA)"},
+            timeout=5.0,
+        )
+        if resp.status_code == 200:
+            for place in resp.json():
+                name = place.get("display_name", "")
+                # Shorten: take first 2-3 parts of the address
+                parts = name.split(", ")
+                short = ", ".join(parts[:3])
+                results.append({
+                    "name": "📍 " + short,
+                    "lat": float(place["lat"]),
+                    "lon": float(place["lon"]),
+                    "type": "place",
+                })
+    except Exception:
+        pass  # Nominatim failure is non-fatal; station results still work
+
+    return results[:limit]
+
+
+@app.get("/api/directions")
+async def get_directions(
+    response: Response,
+    from_lat: float = Query(...),
+    from_lon: float = Query(...),
+    to_lat: float = Query(...),
+    to_lon: float = Query(...),
+):
+    """Proxy transit directions from Transitous (MOTIS) API."""
+    response.headers["Cache-Control"] = "public, max-age=60"
+
+    params = {
+        "fromPlace": f"{from_lat},{from_lon}",
+        "toPlace": f"{to_lat},{to_lon}",
+    }
+    try:
+        resp = await http_client.get(
+            TRANSITOUS_URL,
+            params=params,
+            headers={"User-Agent": "SideGPS/1.0 (NYC transit PWA)"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"error": str(e), "itineraries": []}
+
+    # Simplify the Transitous response for our lightweight frontend
+    itineraries = []
+    for itin in data.get("itineraries", [])[:5]:
+        legs = []
+        for leg in itin.get("legs", []):
+            simplified = {
+                "mode": leg.get("mode", "WALK"),
+                "from_name": leg.get("from", {}).get("name", ""),
+                "to_name": leg.get("to", {}).get("name", ""),
+                "duration": leg.get("duration", 0),
+                "distance": leg.get("distance", 0),
+                "start_time": leg.get("startTime", ""),
+                "end_time": leg.get("endTime", ""),
+            }
+            if leg.get("mode") != "WALK":
+                simplified["route"] = leg.get("routeShortName", "")
+                simplified["route_long"] = leg.get("routeLongName", "")
+                simplified["headsign"] = leg.get("tripHeadsign", "")
+                simplified["agency"] = leg.get("agencyName", "")
+                simplified["num_stops"] = len(leg.get("intermediateStops", []))
+            legs.append(simplified)
+        itineraries.append({
+            "duration": itin.get("duration", 0),
+            "transfers": itin.get("transfers", 0),
+            "start_time": itin.get("startTime", ""),
+            "end_time": itin.get("endTime", ""),
+            "legs": legs,
+        })
+
+    return {"itineraries": itineraries}
 
 
 # Serve frontend static files (mount AFTER API routes)

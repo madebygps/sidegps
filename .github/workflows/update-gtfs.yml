@@ -1,0 +1,53 @@
+name: Update GTFS Data
+
+on:
+  schedule:
+    # 1st of every month at 6am UTC
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+jobs:
+  update-gtfs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --no-dev --frozen
+
+      - name: Rebuild GTFS lite database
+        run: uv run python gtfs_loader.py --lite
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --quiet data/gtfs_lite.db && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push updated DB
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/gtfs_lite.db
+          git commit -m "chore: update GTFS lite database $(date +%Y-%m-%d)"
+          git push
+
+      - name: Deploy to Azure
+        if: steps.diff.outputs.changed == 'true'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: sidegps
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: backend

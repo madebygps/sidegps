@@ -436,3 +436,114 @@ html, body {
 .hidden {
   display: none !important;
 }
+
+/* === Autocomplete Suggestions === */
+.suggestions {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: -4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.suggestion-item {
+  padding: 10px;
+  font-size: 15px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:active {
+  background: var(--accent);
+}
+
+.has-coords {
+  border-color: #2ecc71 !important;
+}
+
+/* === Itinerary Cards === */
+.itinerary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  margin-bottom: 8px;
+}
+
+.itin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.itin-duration {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2ecc71;
+}
+
+.itin-transfers {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.itin-time-range {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.itin-legs {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.leg-walk {
+  font-size: 14px;
+  color: var(--text-dim);
+  padding: 6px 0;
+  border-left: 3px dotted #555;
+  padding-left: 10px;
+  margin-left: 4px;
+}
+
+.leg-transit {
+  padding: 6px 0;
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+  margin-left: 4px;
+}
+
+.leg-transit-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.leg-headsign {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.leg-stops {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.leg-time {
+  font-size: 13px;
+  color: #5dade2;
+  margin-top: 2px;
+}

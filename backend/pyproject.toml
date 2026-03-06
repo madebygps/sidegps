@@ -1,0 +1,15 @@
+[project]
+name = "sidegps"
+version = "0.1.0"
+description = "Degoogled NYC subway transit app for Sidephone"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "certifi>=2026.2.25",
+    "fastapi>=0.135.1",
+    "gtfs-realtime-bindings>=2.0.0",
+    "gunicorn>=25.1.0",
+    "httpx>=0.28.1",
+    "protobuf>=7.34.0",
+    "uvicorn[standard]>=0.41.0",
+]

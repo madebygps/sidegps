@@ -1,8 +1,0 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-gtfs-realtime-bindings==1.0.0
-protobuf==5.27.0
-httpx==0.27.0
-aiosqlite==0.20.0
-gunicorn==22.0.0
-certifi

@@ -29,17 +29,17 @@
     <section id="tab-directions" class="tab-content">
       <form id="directions-form" autocomplete="off">
         <div class="input-row">
-          <input type="text" id="dir-from" placeholder="From" aria-label="From">
+          <input type="text" id="dir-from" placeholder="Station, address, or landmark" aria-label="From">
           <button type="button" id="btn-locate" class="icon-btn" aria-label="Use current location">📍</button>
         </div>
+        <div id="dir-from-suggestions" class="suggestions hidden"></div>
         <div class="input-row">
-          <input type="text" id="dir-to" placeholder="To" aria-label="To">
+          <input type="text" id="dir-to" placeholder="Station, address, or landmark" aria-label="To">
         </div>
+        <div id="dir-to-suggestions" class="suggestions hidden"></div>
         <button type="submit" class="btn-primary">Get Directions</button>
       </form>
-      <div id="directions-result">
-        <p class="status-msg">Coming soon — route planning will be available once the trip planner backend is configured.</p>
-      </div>
+      <div id="directions-result"></div>
     </section>
 
     <!-- Alerts Tab -->
