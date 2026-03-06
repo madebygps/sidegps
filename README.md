@@ -13,6 +13,7 @@ A privacy-respecting NYC subway, Citi Bike, and transit directions app designed 
 - **Offline-capable** — PWA with service worker caching; works in subway tunnels
 - **Tiny screen optimized** — designed for 480×640 displays
 - **No tracking** — no cookies, analytics, or third-party scripts
+- **No data stored** — your location is never logged or persisted server-side; `localStorage` is used only on-device for offline caching
 
 ## Architecture
 
