@@ -28,7 +28,6 @@
   var currentLon = null;
   var cachedNearby = null;
   var cachedAlerts = null;
-  var dirMode = 'transit';
 
   // --- DOM helpers ---
   function $(sel) { return document.querySelector(sel); }
@@ -502,7 +501,6 @@
   // --- Directions tab ---
   var fromCoords = null; // {lat, lon}
   var toCoords = null;
-  var searchTimer = null;
 
   function initDirections() {
     $('#btn-locate').addEventListener('click', function () {
@@ -535,35 +533,33 @@
       searchDirections();
     });
 
-    // Mode picker
-    $$('.mode-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        $$('.mode-btn').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        dirMode = btn.getAttribute('data-mode');
-      });
-    });
   }
 
   function setupAutocomplete(inputId, suggestionsId, onSelect) {
     var input = $('#' + inputId);
     var sugBox = $('#' + suggestionsId);
+    var timer = null;
+    var lastQuery = '';
 
     input.addEventListener('input', function () {
       input.classList.remove('has-coords');
       if (inputId === 'dir-from') fromCoords = null;
       else toCoords = null;
 
-      clearTimeout(searchTimer);
+      clearTimeout(timer);
       var q = input.value.trim();
+      lastQuery = q;
       if (q.length < 2) {
         sugBox.classList.add('hidden');
         sugBox.innerHTML = '';
         return;
       }
-      searchTimer = setTimeout(function () {
+      timer = setTimeout(function () {
+        var queryAtFetch = q;
         apiFetch('/api/search-places?q=' + encodeURIComponent(q))
           .then(function (results) {
+            // Ignore stale responses
+            if (lastQuery !== queryAtFetch) return;
             sugBox.innerHTML = '';
             if (!results || results.length === 0) {
               sugBox.classList.add('hidden');
@@ -590,7 +586,9 @@
 
     // Hide suggestions on blur (with delay so clicks register)
     input.addEventListener('blur', function () {
-      setTimeout(function () { sugBox.classList.add('hidden'); }, 200);
+      setTimeout(function () {
+        if (!input.matches(':focus')) sugBox.classList.add('hidden');
+      }, 200);
     });
   }
 
@@ -600,28 +598,6 @@
     if (!fromCoords || !toCoords) {
       result.innerHTML = '';
       result.appendChild(el('div', { className: 'error-msg', textContent: 'Select a station or use 📍 for both From and To.' }));
-      return;
-    }
-
-    // Walk/bike mode: compute locally (no API needed)
-    if (dirMode === 'walk' || dirMode === 'bike') {
-      var dist = haversineJS(fromCoords.lat, fromCoords.lon, toCoords.lat, toCoords.lon);
-      var speed = dirMode === 'walk' ? 80 : 250; // meters per minute
-      var mins = Math.max(1, Math.round(dist / speed));
-      var icon = dirMode === 'walk' ? '🚶' : '🚲';
-      var distText = dist > 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m';
-
-      result.innerHTML = '';
-      var card = el('div', { className: 'itinerary-card' });
-      card.appendChild(el('div', { className: 'itin-header' }, [
-        el('span', { className: 'itin-duration', textContent: mins + ' min' }),
-        el('span', { className: 'itin-transfers', textContent: icon + ' ' + distText })
-      ]));
-      if (dirMode === 'bike') {
-        // Show nearest Citi Bike stations to origin
-        card.appendChild(el('div', { className: 'leg-walk', textContent: '💡 Check Nearby tab for Citi Bike availability' }));
-      }
-      result.appendChild(card);
       return;
     }
 
@@ -645,15 +621,6 @@
         result.appendChild(el('div', { className: 'error-msg', textContent: 'Could not reach routing server.' }));
         result.appendChild(retryButton(searchDirections));
       });
-  }
-
-  function haversineJS(lat1, lon1, lat2, lon2) {
-    var R = 6371000;
-    var p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
-    var dp = (lat2 - lat1) * Math.PI / 180;
-    var dl = (lon2 - lon1) * Math.PI / 180;
-    var a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
   function renderItineraries(itineraries) {

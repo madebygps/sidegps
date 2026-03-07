@@ -7,7 +7,7 @@ A privacy-respecting NYC subway, Citi Bike, and transit directions app designed 
 - **Real-time subway arrivals** — live data from MTA GTFS-RT feeds (8 route groups)
 - **Nearby stations** — GPS-based, shows walking distance + next trains
 - **Citi Bike** — real-time bike, eBike, and dock availability at nearby stations
-- **Directions** — multi-modal transit routing (🚇 transit, 🚶 walk, 🚲 bike) via Transitous
+- **Directions** — transit routing (🚇) via Transitous
 - **Service alerts** — current MTA disruptions and delays
 - **Map links** — tap 📍 to open any station or bike dock in Organic Maps / HERE Maps via `geo:` URI
 - **Offline-capable** — PWA with service worker caching; works in subway tunnels
