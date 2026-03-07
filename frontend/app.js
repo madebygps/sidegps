@@ -539,7 +539,7 @@
     var input = $('#' + inputId);
     var sugBox = $('#' + suggestionsId);
     var timer = null;
-    var lastQuery = '';
+    var fetchId = 0;
 
     input.addEventListener('input', function () {
       input.classList.remove('has-coords');
@@ -548,18 +548,17 @@
 
       clearTimeout(timer);
       var q = input.value.trim();
-      lastQuery = q;
       if (q.length < 2) {
         sugBox.classList.add('hidden');
         sugBox.innerHTML = '';
         return;
       }
       timer = setTimeout(function () {
-        var queryAtFetch = q;
+        var myFetchId = ++fetchId;
         apiFetch('/api/search-places?q=' + encodeURIComponent(q))
           .then(function (results) {
-            // Ignore stale responses
-            if (lastQuery !== queryAtFetch) return;
+            // Ignore if a newer fetch was started
+            if (myFetchId !== fetchId) return;
             sugBox.innerHTML = '';
             if (!results || results.length === 0) {
               sugBox.classList.add('hidden');
