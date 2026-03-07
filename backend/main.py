@@ -518,7 +518,11 @@ async def get_directions(
             simplified = {
                 "mode": leg.get("mode", "WALK"),
                 "from_name": leg.get("from", {}).get("name", ""),
+                "from_lat": leg.get("from", {}).get("lat"),
+                "from_lon": leg.get("from", {}).get("lon"),
                 "to_name": leg.get("to", {}).get("name", ""),
+                "to_lat": leg.get("to", {}).get("lat"),
+                "to_lon": leg.get("to", {}).get("lon"),
                 "duration": leg.get("duration", 0),
                 "distance": leg.get("distance", 0),
                 "start_time": leg.get("startTime", ""),

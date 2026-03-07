@@ -613,7 +613,14 @@
           result.appendChild(el('div', { className: 'error-msg', textContent: 'Routing error: ' + data.error }));
           return;
         }
-        renderItineraries(data.itineraries || []);
+        // Fetch alerts to show inline warnings for affected routes
+        apiFetch('/api/alerts')
+          .then(function (alertData) {
+            renderItineraries(data.itineraries || [], alertData.alerts || []);
+          })
+          .catch(function () {
+            renderItineraries(data.itineraries || [], []);
+          });
       })
       .catch(function () {
         result.innerHTML = '';
@@ -622,7 +629,7 @@
       });
   }
 
-  function renderItineraries(itineraries) {
+  function renderItineraries(itineraries, alerts) {
     var result = $('#directions-result');
     result.innerHTML = '';
 
@@ -630,6 +637,15 @@
       result.appendChild(el('div', { className: 'status-msg', textContent: 'No routes found.' }));
       return;
     }
+
+    // Build a map of route -> alert headers
+    var routeAlerts = {};
+    (alerts || []).forEach(function (a) {
+      (a.affected_routes || []).forEach(function (r) {
+        if (!routeAlerts[r]) routeAlerts[r] = [];
+        routeAlerts[r].push(a.header_text);
+      });
+    });
 
     itineraries.forEach(function (itin, idx) {
       var totalMin = Math.round(itin.duration / 60);
@@ -674,7 +690,17 @@
           var walkText = '🚶 Walk ' + legMin + ' min';
           if (distM > 0) walkText += ' (' + distM + 'm)';
           if (leg.to_name && leg.to_name !== 'END') walkText += ' to ' + leg.to_name;
-          legEl = el('div', { className: 'leg-walk', textContent: walkText });
+          legEl = el('div', { className: 'leg-walk' });
+          legEl.appendChild(el('span', { textContent: walkText }));
+          // Add map link to walk destination
+          if (leg.to_lat && leg.to_lon) {
+            legEl.appendChild(el('a', {
+              className: 'map-link',
+              href: 'geo:' + leg.to_lat + ',' + leg.to_lon + '?q=' + leg.to_lat + ',' + leg.to_lon + '(' + encodeURIComponent(leg.to_name || 'Destination') + ')',
+              textContent: '📍',
+              title: 'Open in map'
+            }));
+          }
         } else {
           legEl = el('div', { className: 'leg-transit' });
           var legHeader = el('div', { className: 'leg-transit-header' });
@@ -683,6 +709,15 @@
           var modeIcon = leg.mode === 'SUBWAY' ? '🚇' : leg.mode === 'BUS' ? '🚌' : '🚆';
           var routeName = leg.route_long || leg.route || leg.mode;
           legHeader.appendChild(el('span', { textContent: modeIcon + ' ' + routeName + ' · ' + legMin + ' min' }));
+          // Add map link to boarding stop
+          if (leg.from_lat && leg.from_lon) {
+            legHeader.appendChild(el('a', {
+              className: 'map-link',
+              href: 'geo:' + leg.from_lat + ',' + leg.from_lon + '?q=' + leg.from_lat + ',' + leg.from_lon + '(' + encodeURIComponent(leg.from_name || 'Stop') + ')',
+              textContent: '📍',
+              title: 'Open in map'
+            }));
+          }
           legEl.appendChild(legHeader);
 
           if (leg.headsign) {
@@ -700,6 +735,13 @@
           var legTime = formatTime(leg.start_time);
           if (legTime) {
             legEl.appendChild(el('div', { className: 'leg-time', textContent: 'Departs ' + legTime }));
+          }
+
+          // Show alerts for this route
+          if (leg.route && routeAlerts[leg.route]) {
+            routeAlerts[leg.route].forEach(function (alertText) {
+              legEl.appendChild(el('div', { className: 'leg-alert', textContent: '⚠️ ' + alertText }));
+            });
           }
         }
         legsContainer.appendChild(legEl);
